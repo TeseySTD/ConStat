@@ -17,55 +17,70 @@
         else
         {
             var panelsPadding = new Padding(1);
+            var itemsPadding = new Padding(1, 0);
+            <Align Horizontal="HorizontalAlignment.Right">
+                <Padder Padding="new(0,0,1,1)">
+                    <Markup Content="@_lastUpdateLabel" Foreground="Color.Grey"/>
+                </Padder>
+            </Align>
             <Grid Columns="2">
-                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Aqua" Padding="@panelsPadding">
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Aqua" Title="CPU" Padding="@panelsPadding">
                     <Align Horizontal="HorizontalAlignment.Left">
-                        <Rows>
+                        @{
+                            var cpuColor = Color.Default;
+                            if (_cpuNameLabel.Contains("intel", StringComparison.OrdinalIgnoreCase))
+                                cpuColor = Color.DeepSkyBlue2;
+                            else if (_cpuNameLabel.Contains("amd", StringComparison.OrdinalIgnoreCase))
+                                cpuColor = Color.Red;
+                            <Markup Content="@_cpuNameLabel" Foreground="cpuColor"/>
+                        }
+                        <Columns>
                             <Markup Decoration="Decoration.Bold" Content="CPU Usage" Foreground="Color.Aqua"/>
-                            <Markup Content="@_cpuLabel" Foreground="Color.Teal"/>
-                        </Rows>
+                            <Markup Content="@_cpuUsageLabel" Foreground="Color.Teal"/>
+                        </Columns>
                     </Align>
                 </Panel>
-                <Panel Border="BoxBorder.Rounded" BorderColor="Color.SpringGreen2" Padding="@panelsPadding">
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.SpringGreen2" Title="RAM" Padding="@panelsPadding">
                     <Align Horizontal="HorizontalAlignment.Left">
                         <Rows>
-                            <Markup Decoration="Decoration.Bold" Content="Memory Usage" Foreground="Color.SpringGreen1"/>
+                            <Markup Decoration="Decoration.Bold" Content="Memory Usage"
+                                    Foreground="Color.SpringGreen1"/>
                             <Markup Content="@_ramLabel" Foreground="Color.SpringGreen3"/>
                         </Rows>
                     </Align>
                 </Panel>
-                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Purple" Padding="@panelsPadding">
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Purple" Title="GPU" Padding="@panelsPadding">
                     <Align Horizontal="HorizontalAlignment.Left">
                         <Rows>
-                            <Markup Decoration="Decoration.Bold" Content="GPU Info" Foreground="Color.Purple"/>
+                            <Markup Decoration="Decoration.Bold" Content="GPUs List" Foreground="Color.Purple"/>
                             @foreach (var g in _gpuInfos)
                             {
                                 var ram = $"{g.Ram} MB";
-                                var borderColor = Color.Purple_2;
+                                var gpuColor = Color.Purple_2;
                                 if (g.Name.Contains("nvidia", StringComparison.OrdinalIgnoreCase))
-                                    borderColor = Color.Chartreuse3;
+                                    gpuColor = Color.Chartreuse3;
                                 else if (g.Name.Contains("amd", StringComparison.OrdinalIgnoreCase))
-                                    borderColor = Color.Red;
+                                    gpuColor = Color.Red;
                                 else if (g.Name.Contains("intel", StringComparison.OrdinalIgnoreCase))
-                                    borderColor = Color.DeepSkyBlue2;
-                                
-                                <Panel Border="BoxBorder.Rounded" BorderColor="@borderColor" Padding="@panelsPadding">
+                                    gpuColor = Color.DeepSkyBlue2;
+
+                                <Panel Border="BoxBorder.Rounded" BorderColor="@gpuColor" Padding="itemsPadding">
                                     <Columns>
-                                        <Markup Content="@( g.Name + ";")" Foreground="Color.Grey62"/>
-                                        <Markup Content="@( $"RAM:{ram}")" Foreground="Color.MediumPurple1"/>
+                                        <Markup Content="@(g.Name + ";")" Foreground="gpuColor"/>
+                                        <Markup Content="@($"RAM:{ram}")" Foreground="Color.MediumPurple1"/>
                                     </Columns>
                                 </Panel>
                             }
                         </Rows>
                     </Align>
                 </Panel>
-                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Yellow" Padding="@panelsPadding">
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Yellow" Title="Memory" Padding="@panelsPadding">
                     <Align Horizontal="HorizontalAlignment.Left">
                         <Rows>
-                            <Markup Decoration="Decoration.Bold" Content="Disks" Foreground="Color.Yellow"/>
+                            <Markup Decoration="Decoration.Bold" Content="Virtual Disks" Foreground="Color.Yellow"/>
                             @foreach (var d in _diskInfos)
                             {
-                                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Gold1" Padding="@panelsPadding">
+                                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Gold1" Padding="itemsPadding">
                                     <Columns>
                                         <Markup Content="@d.Name" Foreground="Color.Grey70"/>
                                         <Markup Content="@d.Description" Foreground="Color.Yellow1"/>
@@ -76,9 +91,6 @@
                     </Align>
                 </Panel>
             </Grid>
-            <Align Horizontal="HorizontalAlignment.Right">
-                <Markup Content="@_lastUpdateLabel" Foreground="Color.Grey"/>
-            </Align>
         }
     </Align>
 </Panel>
@@ -87,7 +99,8 @@
 
 
 @code {
-    private string _cpuLabel = "N/A";
+    private string _cpuNameLabel = "N/A";
+    private string _cpuUsageLabel = "N/A";
     private string _ramLabel = "N/A";
     private string _lastUpdateLabel = string.Empty;
     private bool _isLoading = true;
@@ -159,11 +172,12 @@
     {
         try
         {
-            _cpuLabel = $"{CpuService.GetCpuUsage():0.0}%";
+            _cpuNameLabel = CpuService.GetCpuName();
+            _cpuUsageLabel = $"{CpuService.GetCpuUsage():0.0}%";
         }
         catch (Exception ex)
         {
-            _cpuLabel = "N/A";
+            _cpuUsageLabel = "N/A";
             Console.Error.WriteLine($" CPU read failed: {ex.Message}");
         }
     }

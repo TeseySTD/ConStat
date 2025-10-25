@@ -1,20 +1,26 @@
 ﻿using System.Runtime.InteropServices;
 using ConStat.Abstractions;
+using Hardware.Info;
 
 namespace ConStat.Services;
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public class CpuServiceWindows : ICpuService
 {
+    private readonly string _cpuName;
     private double _lastCpuPercent;
     private ulong _prevIdle;
     private ulong _prevTotal;
-    private const double SmoothingAlpha = 0.3;
 
     public CpuServiceWindows()
     {
         TrySample(out _prevIdle, out _prevTotal);
+        IHardwareInfo hardwareInfo = new HardwareInfo();
+        hardwareInfo.RefreshCPUList();
+        _cpuName = hardwareInfo.CpuList.FirstOrDefault()?.Name ?? "Unknown CPU";
     }
+
+    public string GetCpuName() => _cpuName;
 
     public double GetCpuUsage()
     {
@@ -36,8 +42,8 @@ public class CpuServiceWindows : ICpuService
 
         _prevIdle = idle;
         _prevTotal = total;
-        
-        _lastCpuPercent = SmoothingAlpha * usage + (1 - SmoothingAlpha) * _lastCpuPercent;
+
+        _lastCpuPercent = usage;
         _lastCpuPercent = Math.Round(_lastCpuPercent, 2);
 
         return _lastCpuPercent;
