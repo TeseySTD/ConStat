@@ -1,0 +1,221 @@
+@namespace ConStat.Components
+@using Spectre.Console
+@using RazorConsole.Components
+@using ConStat.Abstractions
+@using ConStat.Models
+@using Spinner = RazorConsole.Components.Spinner
+@implements IDisposable
+<Panel Border="BoxBorder.Double" BorderColor="Color.Purple3" Expand="true" Padding="new(1)">
+    <Align Vertical="VerticalAlignment.Middle">
+        <Figlet Content="ConStat" Color="Color.Purple_2"/>
+        @if (_isLoading)
+        {
+            const string spinnerStyle = "purple bold";
+            <Spinner Message="Loading system metrics..." SpinnerType="Spectre.Console.Spinner.Known.Dots"
+                     Style="@spinnerStyle"/>
+        }
+        else
+        {
+            var panelsPadding = new Padding(1);
+            <Grid Columns="2">
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Aqua" Padding="@panelsPadding">
+                    <Align Horizontal="HorizontalAlignment.Left">
+                        <Rows>
+                            <Markup Decoration="Decoration.Bold" Content="CPU Usage" Foreground="Color.Aqua"/>
+                            <Markup Content="@_cpuLabel" Foreground="Color.Teal"/>
+                        </Rows>
+                    </Align>
+                </Panel>
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.SpringGreen2" Padding="@panelsPadding">
+                    <Align Horizontal="HorizontalAlignment.Left">
+                        <Rows>
+                            <Markup Decoration="Decoration.Bold" Content="Memory Usage" Foreground="Color.SpringGreen1"/>
+                            <Markup Content="@_ramLabel" Foreground="Color.SpringGreen3"/>
+                        </Rows>
+                    </Align>
+                </Panel>
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Purple" Padding="@panelsPadding">
+                    <Align Horizontal="HorizontalAlignment.Left">
+                        <Rows>
+                            <Markup Decoration="Decoration.Bold" Content="GPU Info" Foreground="Color.Purple"/>
+                            @foreach (var g in _gpuInfos)
+                            {
+                                var ram = $"{g.Ram} MB";
+                                var borderColor = Color.Purple_2;
+                                if (g.Name.Contains("nvidia", StringComparison.OrdinalIgnoreCase))
+                                    borderColor = Color.Chartreuse3;
+                                else if (g.Name.Contains("amd", StringComparison.OrdinalIgnoreCase))
+                                    borderColor = Color.Red;
+                                else if (g.Name.Contains("intel", StringComparison.OrdinalIgnoreCase))
+                                    borderColor = Color.DeepSkyBlue2;
+                                
+                                <Panel Border="BoxBorder.Rounded" BorderColor="@borderColor" Padding="@panelsPadding">
+                                    <Columns>
+                                        <Markup Content="@( g.Name + ";")" Foreground="Color.Grey62"/>
+                                        <Markup Content="@( $"RAM:{ram}")" Foreground="Color.MediumPurple1"/>
+                                    </Columns>
+                                </Panel>
+                            }
+                        </Rows>
+                    </Align>
+                </Panel>
+                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Yellow" Padding="@panelsPadding">
+                    <Align Horizontal="HorizontalAlignment.Left">
+                        <Rows>
+                            <Markup Decoration="Decoration.Bold" Content="Disks" Foreground="Color.Yellow"/>
+                            @foreach (var d in _diskInfos)
+                            {
+                                <Panel Border="BoxBorder.Rounded" BorderColor="Color.Gold1" Padding="@panelsPadding">
+                                    <Columns>
+                                        <Markup Content="@d.Name" Foreground="Color.Grey70"/>
+                                        <Markup Content="@d.Description" Foreground="Color.Yellow1"/>
+                                    </Columns>
+                                </Panel>
+                            }
+                        </Rows>
+                    </Align>
+                </Panel>
+            </Grid>
+            <Align Horizontal="HorizontalAlignment.Right">
+                <Markup Content="@_lastUpdateLabel" Foreground="Color.Grey"/>
+            </Align>
+        }
+    </Align>
+</Panel>
+
+
+
+
+@code {
+    private string _cpuLabel = "N/A";
+    private string _ramLabel = "N/A";
+    private string _lastUpdateLabel = string.Empty;
+    private bool _isLoading = true;
+    private List<DiskInfo> _diskInfos = new();
+    private List<GpuInfo> _gpuInfos = new();
+
+    private readonly CancellationTokenSource _cts = new();
+    private Task? _monitorTask;
+
+    [Inject] private ICpuService CpuService { get; init; } = null!;
+    [Inject] private IGpuService GpuService { get; init; } = null!;
+    [Inject] private IDiskService DiskService { get; init; } = null!;
+    [Inject] private IRamService RamService { get; init; } = null!;
+
+    [Parameter] public int Interval { get; set; } = 1000;
+
+    protected override void OnInitialized()
+    {
+        _monitorTask = Task.Run(() => MonitorLoopAsync(_cts.Token));
+        _monitorTask.ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                Console.Error.WriteLine($"Monitor task faulted: {t.Exception}");
+            }
+        }, TaskScheduler.Default);
+    }
+
+
+    private async Task MonitorLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            var startMeasureTime = DateTime.Now;
+            TimeSpan deltaTime;
+            try
+            {
+                UpdateCpu();
+                UpdateRam();
+                UpdateGpu();
+                UpdateDisks();
+
+                _lastUpdateLabel = $"Last update: {DateTime.Now:HH:mm:ss}";
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($" update error: {ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                deltaTime = DateTime.Now - startMeasureTime;
+            }
+
+            try
+            {
+                _isLoading = false;
+                await InvokeAsync(StateHasChanged);
+                if (deltaTime.Milliseconds < Interval)
+                    await Task.Delay(Interval - deltaTime.Milliseconds, token);
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private void UpdateCpu()
+    {
+        try
+        {
+            _cpuLabel = $"{CpuService.GetCpuUsage():0.0}%";
+        }
+        catch (Exception ex)
+        {
+            _cpuLabel = "N/A";
+            Console.Error.WriteLine($" CPU read failed: {ex.Message}");
+        }
+    }
+
+    private void UpdateRam()
+    {
+        try
+        {
+            _ramLabel = RamService.GetRamInfo();
+        }
+        catch (Exception ex)
+        {
+            _ramLabel = "N/A";
+            Console.Error.WriteLine($"[ResourceMonitor] RAM read failed: {ex.Message}");
+        }
+    }
+
+    private void UpdateGpu()
+    {
+        try
+        {
+            _gpuInfos = GpuService.GetGpuInfos();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ResourceMonitor] GPU read failed: {ex.Message}");
+        }
+    }
+
+    private void UpdateDisks()
+    {
+        try
+        {
+            _diskInfos = DiskService.GetDisksInfo();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ResourceMonitor] Disk read failed: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+}
